@@ -56,6 +56,20 @@ fn app_bundle(exe: &str) -> Option<String> {
     Some(exe[start..end].to_string())
 }
 
+/// Safari web apps ("Add to Dock") all run one shared system binary and name the site's
+/// bundle in an argument: `Web App --bundlepath ~/Applications/Spotify.app`. Returns "Spotify".
+fn web_app_bundle(exe: &str, args: &[std::ffi::OsString]) -> Option<String> {
+    if !exe.ends_with("/Web App.app/Contents/MacOS/Web App") {
+        return None;
+    }
+    let i = args.iter().position(|a| a == "--bundlepath")?;
+    let path = std::path::Path::new(args.get(i + 1)?);
+    path.extension()
+        .is_some_and(|x| x == "app")
+        .then(|| path.file_stem()?.to_str().map(str::to_string))
+        .flatten()
+}
+
 fn truncate(s: String, max: usize) -> String {
     if s.len() <= max {
         return s;
@@ -159,7 +173,9 @@ impl Scanner {
                     .map(|a| a.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" ");
-                let app = exe.as_deref().and_then(app_bundle);
+                let app = exe
+                    .as_deref()
+                    .and_then(|e| app_bundle(e).or_else(|| web_app_bundle(e, p.cmd())));
                 Proc {
                     pid,
                     ppid: p.parent().map(Pid::as_u32),
@@ -303,6 +319,17 @@ mod tests {
         );
         assert_eq!(app_bundle("/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter"), None);
         assert_eq!(app_bundle("/usr/bin/zsh"), None);
+    }
+
+    #[test]
+    fn finds_safari_web_apps() {
+        let exe = "/System/Volumes/Preboot/Cryptexes/App/System/Library/CoreServices/Web App.app/Contents/MacOS/Web App";
+        let args: Vec<std::ffi::OsString> = [exe, "--bundlepath", "/Users/me/Applications/Spotify.app", "--sandboxextension", "abc"]
+            .iter()
+            .map(Into::into)
+            .collect();
+        assert_eq!(web_app_bundle(exe, &args), Some("Spotify".into()));
+        assert_eq!(web_app_bundle("/usr/bin/zsh", &args), None);
     }
 
     #[test]

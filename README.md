@@ -47,7 +47,7 @@ The layout mimics the real [Sombrero Galaxy](https://en.wikipedia.org/wiki/Sombr
 | ⭐ **Stars** (inner orbit) | AI coding agents | Colour = status: teal **working**, amber **needs you** (and bouncing), blue **idle**, violet **running** (status unknown). Small white sparks orbiting a star are the commands that agent is running right now, like `npm test` or `tsc`. |
 | 🪐 **Planets** (middle disk) | Apps (`.app` bundles) | Size = memory. Glow and spin speed = CPU. Moons = helper processes (Chrome's renderers, Slack's helpers…). A **cyan ring** means the app is listening on a port. An **aurora ring** marks AI apps (Cursor, Claude, ChatGPT, Zed, Windsurf, Perplexity). |
 | ✨ **Dust** (outer disk) | Background processes & daemons | One grain per process. Size = memory. Orange = busy, cyan = listening on a port, dim blue = idle. Hover for name, PID, CPU and memory. |
-| 🌀 **Nebula** (above the disk) | Now playing in Spotify or Apple Music | Swirls and pulses while music plays and calms down when paused. Shows title, artist and progress. |
+| 🌀 **Nebula** (above the disk) | Whatever is playing: Spotify, Apple Music, web apps, browser tabs… | Swirls and pulses while music plays and calms down when paused. Shows title, artist and progress. |
 
 | Galaxy overview | An agent that needs you |
 |---|---|
@@ -68,7 +68,8 @@ And when you want the boring version, **List** view is a sortable, searchable ta
 - **Apps grouped properly.** Chrome's 30 helper processes show up as one "Google Chrome" planet with moons, not 30 separate dots. Grouping follows the outermost `.app` bundle in each binary's path.
 - **Agent task tracking.** Every process an agent spawns (shells, test runners, builds) is attributed to that agent, and its CPU and memory count toward the agent's total.
 - **Dev server discovery.** Anything listening on a TCP port gets a cyan marker, and its ports show up as clickable `:5173 ↗` chips that open `http://localhost:<port>`.
-- **Now playing.** Spotify and Apple Music, read via AppleScript. The players are only queried when they're already running, so this never launches them.
+- **Now playing from any player.** It reads macOS's system-wide Now Playing info (what Control Centre shows), so it covers native apps, Safari "Add to Dock" web apps, and browser tabs such as YouTube. If that's unavailable, it falls back to asking Spotify and Apple Music directly via AppleScript, and only when they're already running.
+- **Web apps count as apps.** Sites added to the Dock with Safari (e.g. Spotify, Gmail, Netflix) show up as planets under their own name, not as an anonymous "Web App" process.
 - **System vitals.** CPU and memory meters, plus agent, app and process counts in the top bar.
 
 **Understanding agents** (deepest for Claude Code)
@@ -96,7 +97,7 @@ And when you want the boring version, **List** view is a sortable, searchable ta
 
 | | Version | Notes |
 |---|---|---|
-| **macOS** | recent | App grouping, `lsof` and AppleScript music are macOS-specific (see [Limitations](#limitations--roadmap)). Developed and tested on macOS 27, Apple Silicon. |
+| **macOS** | recent | App grouping, `lsof` and Now Playing are macOS-specific (see [Limitations](#limitations--roadmap)). Developed and tested on macOS 27, Apple Silicon. |
 | **Rust** | latest stable | Install with [rustup](https://rustup.rs). Developed on 1.98. |
 | **Node.js** | 20+ | |
 | **pnpm** | 9+ | `npm i -g pnpm`, or `corepack enable`. |
@@ -240,7 +241,7 @@ flowchart LR
   subgraph mac["Your Mac"]
     procs["Process table<br/>(sysinfo)"]
     lsof["lsof<br/>listening ports"]
-    osa["osascript<br/>Spotify · Music"]
+    osa["osascript<br/>system Now Playing"]
     jsonl["~/.claude/projects/*.jsonl<br/>Claude Code transcripts"]
   end
 
@@ -271,7 +272,7 @@ flowchart LR
    - **App** if its executable lives in a user-facing `.app` bundle under `/Applications`, `/System/Applications`, `~/Applications` or Finder. Bundles buried in `/System/Library` (ControlCenter, XPC services…) count as background. That's what they are to you.
    - **Agent** if it matches the table above, or descends from something that does.
    - **Background** otherwise.
-3. **Ports** from `lsof -nP -iTCP -sTCP:LISTEN` (every 4th tick) and **music** from AppleScript (every 2nd tick). These spawn subprocesses, so they run less often.
+3. **Ports** from `lsof -nP -iTCP -sTCP:LISTEN` (every 4th tick) and **music** (every 2nd tick). Music comes from macOS's Now Playing info in the private MediaRemote framework. Recent macOS only answers Apple-signed programs, so it's queried through `osascript` (JavaScript for Automation) rather than from the app's own binary. `lsof` and `osascript` spawn subprocesses, so they run less often.
 4. **Claude sessions** are resolved and their transcripts read incrementally.
 5. **Alerts** compare each agent's "needs you" reason with the previous tick and fire notifications.
 6. The whole **`Snapshot`** is emitted to the frontend as a Tauri event and kept for the `get_snapshot` command, so a freshly loaded window draws immediately.
@@ -302,7 +303,7 @@ These constants are the main knobs:
 | Constant | Default | File | Effect |
 |---|---|---|---|
 | `TICK` | 1.5 s | `src-tauri/src/lib.rs` | How often the machine is sampled |
-| Ports / music cadence | every 4th / 2nd tick | `src-tauri/src/scanner.rs` (`sample`) | How often `lsof` / AppleScript run |
+| Ports / music cadence | every 4th / 2nd tick | `src-tauri/src/scanner.rs` (`sample`) | How often `lsof` / `osascript` run |
 | `PERMISSION_STALL_SECS` | 20 s | `src-tauri/src/scanner.rs` | How long a tool call can hang with nothing running before it's called a permission prompt |
 | `REPEAT_AFTER` | 5 min | `src-tauri/src/alerts.rs` | Minimum gap before the same request notifies again |
 | Idle threshold | 10 min | `src-tauri/src/claude.rs` (`update`) | Transcript silence before an agent is "idle" |
@@ -318,7 +319,7 @@ These constants are the main knobs:
 - **Read-only on your data.** Claude Code transcripts are only read, never modified. Token counts and prompts are shown in the app and aren't stored anywhere else.
 - **Ordinary user permissions.** No root, no helper daemon, no kernel extension. Stop / Force kill can only signal processes you own, and system or other-user processes return a clear error. PID 1 and Sombrero Galaxy itself are always refused.
 - **Two-click kills.** Every destructive button needs a confirmation click within 3 seconds.
-- **macOS prompts you may see:** *Notifications* (for agent alerts) and *Automation → Spotify / Music* (to read what's playing). Both are optional, and the app works without them.
+- **macOS prompts you may see:** *Notifications* (for agent alerts) and *Automation → Spotify / Music*, which only appears if the fallback music reader is used. Both are optional, and the app works without them.
 - **Tauri capabilities** are kept minimal: core defaults, window dragging and the opener plugin (for `http://localhost` links).
 
 ---
@@ -338,7 +339,7 @@ Transcript-to-process matching is inferred from start times (see [above](#claude
 Check *System Settings → Notifications*. In development (`pnpm tauri dev`), macOS may list them under your terminal app rather than "Sombrero Galaxy". Also check that the bell in the top bar isn't muted.
 
 **The music nebula never appears**
-Only Spotify and Apple Music are supported, and only while running. If you declined the *Automation* prompt, re-enable it under *System Settings → Privacy & Security → Automation*.
+The nebula shows whatever macOS itself lists as Now Playing: check that the track appears in Control Centre's media widget. Some web players don't publish track info. If macOS's Now Playing info isn't available, only Spotify and Apple Music are supported (via AppleScript). If you declined their *Automation* prompt, re-enable it under *System Settings → Privacy & Security → Automation*.
 
 **"Could not signal <pid>"**
 The process belongs to another user or to the system. Sombrero Galaxy runs without elevated privileges on purpose.
@@ -398,7 +399,7 @@ sombrero-galaxy/
 │   │   ├── scanner.rs          Process sampling & classification
 │   │   ├── claude.rs           Claude Code transcript reader
 │   │   ├── alerts.rs           Notifications & Dock badge
-│   │   ├── music.rs            Spotify / Apple Music via AppleScript
+│   │   ├── music.rs            System Now Playing (+ Spotify/Music fallback)
 │   │   ├── ports.rs            Listening ports via lsof
 │   │   └── model.rs            Snapshot data model
 │   └── tauri.conf.json         Window & bundle config
@@ -411,10 +412,10 @@ sombrero-galaxy/
 ## Limitations & roadmap
 
 **Known limitations**
-- **macOS only for now.** Process sampling (`sysinfo`) is cross-platform, but app grouping, ports (`lsof`) and music (AppleScript) are macOS-specific. The frontend is platform-neutral.
+- **macOS only for now.** Process sampling (`sysinfo`) is cross-platform, but app grouping, ports (`lsof`) and Now Playing are macOS-specific. The frontend is platform-neutral.
 - **Status beyond Claude Code is coarse.** Other agents are working or running based on CPU alone.
 - **Permission detection is inferred.** A tool that runs inside Claude itself (like a slow web fetch) for over 20 s with no child process can trigger a false "wants permission".
-- **Music is Spotify and Apple Music only.** Browser tabs (YouTube, SoundCloud) aren't detected.
+- **Now Playing uses a private macOS framework.** It's read through `osascript`, which works today but could change in a future macOS update. If it does, the app falls back to Spotify and Apple Music only.
 - **Clicking a notification doesn't jump to the agent.** The notification plugin doesn't support click actions on macOS.
 
 **Ideas**
@@ -424,7 +425,6 @@ sombrero-galaxy/
 - [ ] Network activity as light trails between bodies
 - [ ] CPU / memory history sparklines in the inspector
 - [ ] Windows and Linux support
-- [ ] Browser media via the system Now Playing API
 
 Contributions and ideas are welcome. Open an issue or a PR.
 
