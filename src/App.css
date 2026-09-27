@@ -69,7 +69,7 @@ input { font: inherit; color: inherit; }
 .pill { font-size: 10.5px; font-weight: 500; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line-strong); color: var(--amber); }
 .stats { display: flex; align-items: center; gap: 20px; flex: 1; min-width: 0; }
 .meter { width: 170px; }
-.meter-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.meter-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
 .meter-head .mono { color: var(--text); }
 .meter-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .meter-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #7aa2ff); border-radius: 4px; transition: width 0.8s ease; }
